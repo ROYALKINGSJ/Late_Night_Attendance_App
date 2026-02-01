@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Late Night Attendance</title>
+    <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -18,40 +19,38 @@
             text-align: center;
             padding: 20px;
             box-sizing: border-box;
+            overflow: hidden; /* Prevent scrolling */
         }
         h1 { margin-bottom: 5px; font-weight: 700; }
         p { color: #aaaaaa; margin-bottom: 30px; margin-top: 0;}
         
-        #camera-container {
+        /* Container for Video + AI Canvas */
+        #camera-wrapper {
+            position: relative;
             width: 100%;
             max-width: 350px;
             aspect-ratio: 3/4;
             background-color: #333;
             border-radius: 20px;
             overflow: hidden;
-            position: relative;
             box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-            display: none; /* Hidden until location is verified */
+            display: none; 
         }
         
         video {
             width: 100%;
             height: 100%;
             object-fit: cover;
+            position: absolute;
+            top: 0;
+            left: 0;
         }
 
-        /* Overlay box to guide face positioning */
-        .face-guide {
+        /* The Canvas where AI draws the box */
+        canvas {
             position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 60%;
-            height: 45%;
-            border: 3px solid #00ff88;
-            border-radius: 50%; /* Oval shape */
-            box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
-            opacity: 0.8;
+            top: 0;
+            left: 0;
         }
 
         button {
@@ -69,40 +68,34 @@
             font-weight: 600;
         }
         button:disabled { background-color: #444; color: #888; cursor: not-allowed; }
-        button:active { transform: scale(0.98); }
-
-        #status { 
-            margin-top: 20px; 
-            font-size: 16px; 
-            min-height: 24px;
-        }
-        .success { color: #00ff88; font-weight: bold; }
-        .error { color: #ff4444; font-weight: bold; }
+        
+        #status { margin-top: 20px; font-size: 16px; min-height: 24px; font-weight: bold;}
+        .success { color: #00ff88; }
+        .error { color: #ff4444; }
         .info { color: #00aaff; }
+        .scanning { color: #ffcc00; animation: blink 1s infinite; }
 
-        /* Debug info styling */
+        @keyframes blink { 50% { opacity: 0.5; } }
+        
         #debug-log {
-            margin-top: 30px;
+            margin-top: 10px;
             font-size: 10px;
             color: #555;
             font-family: monospace;
-            max-width: 300px;
-            word-wrap: break-word;
         }
     </style>
 </head>
 <body>
 
-    <h1>GFAS (Gro Fenced Attendance System)</h1>
-    <p>Late Night Attendance System</p>
+    <h1>Scholar Zolo</h1>
+    <p>GFAS (Geo Fenced Attendance System)</p>
 
-    <div id="camera-container">
+    <div id="camera-wrapper">
         <video id="video" autoplay playsinline muted></video>
-        <div class="face-guide"></div>
-    </div>
+        </div>
 
     <div id="controls">
-        <button id="start-btn" onclick="startAttendanceProcess()">📍 Verify Location & Scan</button>
+        <button id="start-btn" onclick="initApp()">📍 Verify Location & Scan</button>
     </div>
 
     <div id="status">Ready to scan...</div>
@@ -110,140 +103,158 @@
 
     <script>
         // --- CONFIGURATION ---
-
-        // SET THIS TO TRUE TO SKIP GPS CHECK (FOR TESTING)
-        const TEST_MODE = false; 
-
-        // The 4 corners of your hostel building (Geofence)
+        const TEST_MODE = false; // Set to true to skip GPS for testing
+        
+        // HOSTEL GEOFENCE
         const HOSTEL_POLYGON = [
-            { lat: 13.128425, lng: 77.589451 }, // Corner 1
-            { lat: 13.128249, lng: 77.589476 }, // Corner 2
-            { lat: 13.128287, lng: 77.588653 }, // Corner 3
-            { lat: 13.128426, lng: 77.588660 }  // Corner 4
+            { lat: 13.128425, lng: 77.589451 },
+            { lat: 13.128249, lng: 77.589476 },
+            { lat: 13.128287, lng: 77.588653 },
+            { lat: 13.128426, lng: 77.588660 }
         ];
 
+        // --- VARIABLES ---
         const statusEl = document.getElementById('status');
-        const cameraContainer = document.getElementById('camera-container');
+        const debugEl = document.getElementById('debug-log');
+        const cameraWrapper = document.getElementById('camera-wrapper');
         const startBtn = document.getElementById('start-btn');
-        const debugLog = document.getElementById('debug-log');
+        let videoEl;
+        let detectionInterval;
+        let faceConfirmedFrames = 0; // How long we've seen a face
 
-        function startAttendanceProcess() {
+        async function initApp() {
             startBtn.disabled = true;
-            statusEl.innerText = "Checking GPS Location...";
-            statusEl.className = "info";
+            statusEl.innerText = "Loading AI Models...";
+            
+            try {
+                // 1. Load the AI Model (Tiny Face Detector)
+                // We assume the model files are in the same directory as index.html
+                await faceapi.nets.tinyFaceDetector.loadFromUri('./'); 
+                
+                statusEl.innerText = "Checking GPS...";
+                checkLocation();
+            } catch (err) {
+                console.error(err);
+                showError("Error loading AI. Did you upload the model files?");
+            }
+        }
 
+        function checkLocation() {
             if (TEST_MODE) {
-                console.log("TEST MODE: Skipping GPS Check");
-                setTimeout(() => {
-                    successLocation();
-                }, 1000);
+                console.log("TEST MODE: Skipping GPS");
+                successLocation();
                 return;
             }
 
             if (!navigator.geolocation) {
-                showError("Geolocation is not supported by this browser.");
+                showError("Geolocation not supported.");
                 return;
             }
 
             navigator.geolocation.getCurrentPosition(
                 (position) => {
-                    const userLat = position.coords.latitude;
-                    const userLng = position.coords.longitude;
-                    const accuracy = position.coords.accuracy;
+                    const userPos = { lat: position.coords.latitude, lng: position.coords.longitude };
+                    debugEl.innerText = `Lat: ${userPos.lat.toFixed(5)} Lng: ${userPos.lng.toFixed(5)}`;
                     
-                    debugLog.innerText = `Lat: ${userLat.toFixed(5)}\nLng: ${userLng.toFixed(5)}\nAcc: ${accuracy}m`;
-
-                    // CHECK: Is the user inside the polygon?
-                    const isInside = isPointInPolygon({lat: userLat, lng: userLng}, HOSTEL_POLYGON);
-
-                    if (isInside) {
+                    if (isPointInPolygon(userPos, HOSTEL_POLYGON)) {
                         successLocation();
                     } else {
-                        showError(`❌ You are outside the designated area.`);
+                        showError("❌ You are outside the designated area.");
                         startBtn.disabled = false;
                     }
                 },
                 (error) => {
-                    switch(error.code) {
-                        case error.PERMISSION_DENIED:
-                            showError("GPS Request Denied. Please allow location access.");
-                            break;
-                        case error.POSITION_UNAVAILABLE:
-                            showError("Location information is unavailable.");
-                            break;
-                        case error.TIMEOUT:
-                            showError("The request to get user location timed out.");
-                            break;
-                        default:
-                            showError("An unknown error occurred.");
-                            break;
-                    }
+                    showError("GPS Error. Allow permissions.");
                     startBtn.disabled = false;
                 },
-                {
-                    enableHighAccuracy: true,
-                    timeout: 10000,
-                    maximumAge: 0
-                }
+                { enableHighAccuracy: true, timeout: 10000 }
             );
         }
 
         function successLocation() {
             statusEl.innerText = "✅ Location Verified! Starting Camera...";
             statusEl.className = "success";
-            setTimeout(openCamera, 1000);
+            setTimeout(startCamera, 1000);
         }
 
-        async function openCamera() {
-            try {
-                // Request camera (prefer front-facing)
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: 'user' } 
-                });
-                
-                const video = document.getElementById('video');
-                video.srcObject = stream;
-                
-                // Show camera UI
-                cameraContainer.style.display = 'block';
-                startBtn.style.display = 'none'; 
-                statusEl.innerText = "Scanning Face...";
-                statusEl.className = "info";
-                
-                // MOCK FACE DETECT for Prototype
-                // In a real app, face-api.js would run here
-                setTimeout(() => {
-                    completeAttendance(stream);
-                }, 3500); // 3.5 seconds "scanning" delay
+        async function startCamera() {
+            cameraWrapper.style.display = 'block';
+            startBtn.style.display = 'none';
+            videoEl = document.getElementById('video');
 
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+                videoEl.srcObject = stream;
+                
+                // Wait for video to actually play before attaching AI
+                videoEl.onloadedmetadata = () => {
+                    videoEl.play();
+                    startAIDetection();
+                };
             } catch (err) {
-                showError("Camera access denied. Please allow camera permissions.");
-                console.error(err);
-                startBtn.disabled = false;
+                showError("Camera denied.");
             }
         }
 
-        function completeAttendance(stream) {
-            statusEl.innerText = "✅ Attendance Marked Successfully!";
-            statusEl.className = "success";
+        async function startAIDetection() {
+            statusEl.innerText = "Looking for a face...";
+            statusEl.className = "scanning";
+
+            // Create a canvas to draw the detection box
+            const canvas = faceapi.createCanvasFromMedia(videoEl);
+            cameraWrapper.append(canvas);
             
-            // Stop the camera stream
-            stream.getTracks().forEach(track => track.stop());
-            
-            // Optional: Freeze the last frame or show a checkmark
-            // For now, we just leave the video element (it will freeze when tracks stop)
+            // Match canvas size to video size
+            const displaySize = { width: videoEl.clientWidth, height: videoEl.clientHeight };
+            faceapi.matchDimensions(canvas, displaySize);
+
+            // Loop every 100ms
+            detectionInterval = setInterval(async () => {
+                // DETECT FACES using TinyFaceDetector
+                const detections = await faceapi.detectAllFaces(videoEl, new faceapi.TinyFaceDetectorOptions());
+                
+                // Resize results to match display
+                const resizedDetections = faceapi.resizeResults(detections, displaySize);
+                
+                // Clear previous drawings
+                canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+                
+                // DRAW THE BOX
+                faceapi.draw.drawDetections(canvas, resizedDetections);
+
+                if (detections.length > 0) {
+                    faceConfirmedFrames++;
+                    statusEl.innerText = `Face Detected... Hold still (${faceConfirmedFrames}/20)`;
+                    
+                    // If we see a face for ~2 seconds (20 frames)
+                    if (faceConfirmedFrames > 20) {
+                        finishAttendance();
+                    }
+                } else {
+                    faceConfirmedFrames = 0; // Reset if face is lost
+                    statusEl.innerText = "No face detected. Look at camera.";
+                }
+            }, 100);
         }
 
-        // --- RAY CASTING ALGORITHM ---
-        function isPointInPolygon(point, polygon) {
-            let x = point.lat, y = point.lng;
+        function finishAttendance() {
+            clearInterval(detectionInterval);
+            statusEl.innerText = "✅ ATTENDANCE MARKED!";
+            statusEl.className = "success";
+            
+            // Draw a final "Success" message on canvas
+            // Stop Video
+            videoEl.srcObject.getTracks().forEach(track => track.stop());
+        }
+
+        // Ray Casting Algorithm for Geofence
+        function isPointInPolygon(p, polygon) {
             let inside = false;
             for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
                 let xi = polygon[i].lat, yi = polygon[i].lng;
                 let xj = polygon[j].lat, yj = polygon[j].lng;
-                
-                let intersect = ((yi > y) != (yj > y)) &&
-                    (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+                let intersect = ((yi > p.lng) != (yj > p.lng)) &&
+                    (p.lat < (xj - xi) * (p.lng - yi) / (yj - yi) + xi);
                 if (intersect) inside = !inside;
             }
             return inside;
