@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scholar Zolo - Night Attendance</title>
+    <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <style>
+        /* ... (Keep your previous CSS here, it was perfect) ... */
+        body { background-color: #121212; color: white; font-family: sans-serif; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        #camera-wrapper { position: relative; width: 300px; height: 400px; background: #333; border-radius: 20px; overflow: hidden; display: none; margin-bottom: 20px;}
+        video { width: 100%; height: 100%; object-fit: cover; }
+        canvas { position: absolute; top: 0; left: 0; }
+        button { padding: 15px 30px; font-size: 18px; background: #007aff; color: white; border: none; border-radius: 12px; cursor: pointer; }
+        .success { color: #00ff88; font-weight: bold; font-size: 18px; }
+        .error { color: #ff4444; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h1>Scholar Zolo</h1>
+    <p>Secure Late Night Attendance</p>
+
+    <div id="camera-wrapper">
+        <video id="video" autoplay playsinline muted></video>
+    </div>
+
+    <button id="start-btn" onclick="initApp()">📍 Start Attendance Check</button>
+    <div id="status" style="margin-top: 20px;">Ready...</div>
+
+    <script>
+        // --- 1. PASTE YOUR GENERATED NUMBERS HERE ---
+        // It should look like: const ADMIN_DESCRIPTOR = [-0.123, 0.045, ... ];
+        const ADMIN_DESCRIPTOR = [ PASTE_YOUR_NUMBERS_HERE ]; 
+
+        // --- CONFIGURATION ---
+        const TEST_MODE = false; 
+        const HOSTEL_POLYGON = [
+            { lat: 13.128425, lng: 77.589451 },
+            { lat: 13.128249, lng: 77.589476 },
+            { lat: 13.128287, lng: 77.588653 },
+            { lat: 13.128426, lng: 77.588660 }
+        ];
+
+        const statusEl = document.getElementById('status');
+        const cameraWrapper = document.getElementById('camera-wrapper');
+        const startBtn = document.getElementById('start-btn');
+        let videoEl;
+
+        async function initApp() {
+            startBtn.disabled = true;
+            statusEl.innerText = "Loading AI Brains (This may take 10s)...";
+            
+            try {
+                // Load ALL Models
+                await Promise.all([
+                    faceapi.nets.tinyFaceDetector.loadFromUri('./'),
+                    faceapi.nets.faceLandmark68Net.loadFromUri('./'),
+                    faceapi.nets.faceRecognitionNet.loadFromUri('./')
+                ]);
+                
+                startCamera(); 
+            } catch (err) {
+                statusEl.innerText = "Error: Model files missing on GitHub.";
+                console.error(err);
+            }
+        }
+
+        async function startCamera() {
+            cameraWrapper.style.display = 'block';
+            startBtn.style.display = 'none';
+            videoEl = document.getElementById('video');
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+            videoEl.srcObject = stream;
+            
+            videoEl.onloadedmetadata = () => {
+                videoEl.play();
+                statusEl.innerText = "Verifying Identity & Location...";
+                startRecognition();
+            };
+        }
+
+        async function startRecognition() {
+            // Create "Matcher" with your hardcoded data
+            const labeledDescriptor = new faceapi.LabeledFaceDescriptors('Sanskar', [new Float32Array(ADMIN_DESCRIPTOR)]);
+            const faceMatcher = new faceapi.FaceMatcher(labeledDescriptor, 0.6); // 0.6 is strictness
+
+            setInterval(async () => {
+                // 1. Detect Face + Details
+                const detection = await faceapi.detectSingleFace(videoEl, new faceapi.TinyFaceDetectorOptions())
+                    .withFaceLandmarks()
+                    .withFaceDescriptor();
+
+                if (detection) {
+                    // 2. Compare with YOUR data
+                    const match = faceMatcher.findBestMatch(detection.descriptor);
+                    
+                    if (match.label === 'Sanskar') {
+                        // 3. Check GPS
+                        checkGPS(true);
+                    } else {
+                        statusEl.innerText = "❌ Face Not Recognized (Access Denied)";
+                        statusEl.className = "error";
+                    }
+                }
+            }, 500);
+        }
+
+        function checkGPS(faceIsValid) {
+            if (TEST_MODE) { completeAttendance(); return; }
+
+            navigator.geolocation.getCurrentPosition(pos => {
+                const userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                if (isPointInPolygon(userPos, HOSTEL_POLYGON)) {
+                    completeAttendance();
+                } else {
+                    statusEl.innerText = "✅ Face Matched, but ❌ Outside Hostel!";
+                }
+            });
+        }
+
+        function completeAttendance() {
+            statusEl.innerText = "✅ ATTENDANCE MARKED: Sanskar Jaiswal";
+            statusEl.className = "success";
+            cameraWrapper.style.border = "5px solid #00ff88";
+        }
+
+        // Ray Casting
+        function isPointInPolygon(p, polygon) {
+            let inside = false;
+            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                let xi = polygon[i].lat, yi = polygon[i].lng;
+                let xj = polygon[j].lat, yj = polygon[j].lng;
+                let intersect = ((yi > p.lng) != (yj > p.lng)) && (p.lat < (xj - xi) * (p.lng - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+            }
+            return inside;
+        }
+    </script>
+</body>
+</html>
