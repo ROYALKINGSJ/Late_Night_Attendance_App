@@ -3,8 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Late Night Attendance</title>
+    <title>Scholar Zolo - Night Attendance</title>
+    
     <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -21,8 +23,8 @@
             box-sizing: border-box;
             overflow: hidden; /* Prevent scrolling */
         }
-        h1 { margin-bottom: 5px; font-weight: 700; }
-        p { color: #aaaaaa; margin-bottom: 30px; margin-top: 0;}
+        h1 { margin-bottom: 5px; font-weight: 700; color: #00aaff; }
+        p { color: #aaaaaa; margin-bottom: 30px; margin-top: 0; font-size: 14px;}
         
         /* Container for Video + AI Canvas */
         #camera-wrapper {
@@ -30,11 +32,12 @@
             width: 100%;
             max-width: 350px;
             aspect-ratio: 3/4;
-            background-color: #333;
+            background-color: #222;
             border-radius: 20px;
             overflow: hidden;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-            display: none; 
+            box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+            display: none; /* Hidden until started */
+            border: 2px solid #333;
         }
         
         video {
@@ -44,6 +47,7 @@
             position: absolute;
             top: 0;
             left: 0;
+            transform: scaleX(-1); /* Mirror the webcam like a selfie */
         }
 
         /* The Canvas where AI draws the box */
@@ -51,61 +55,65 @@
             position: absolute;
             top: 0;
             left: 0;
+            transform: scaleX(-1); /* Mirror the canvas too */
         }
 
         button {
             background-color: #007aff;
             color: white;
             border: none;
-            padding: 15px 30px;
+            padding: 18px 30px;
             font-size: 18px;
             border-radius: 12px;
             cursor: pointer;
-            margin-top: 20px;
-            transition: background 0.3s, transform 0.1s;
+            margin-top: 30px;
+            transition: background 0.2s, transform 0.1s;
             width: 100%;
-            max-width: 300px;
+            max-width: 320px;
             font-weight: 600;
+            box-shadow: 0 4px 12px rgba(0,122,255,0.3);
         }
-        button:disabled { background-color: #444; color: #888; cursor: not-allowed; }
+        button:disabled { background-color: #333; color: #666; cursor: not-allowed; box-shadow: none; }
+        button:active { transform: scale(0.98); }
         
-        #status { margin-top: 20px; font-size: 16px; min-height: 24px; font-weight: bold;}
-        .success { color: #00ff88; }
+        #status { margin-top: 25px; font-size: 16px; min-height: 24px; font-weight: 600; letter-spacing: 0.5px;}
+        .success { color: #00ff88; text-shadow: 0 0 10px rgba(0,255,136,0.3); }
         .error { color: #ff4444; }
         .info { color: #00aaff; }
-        .scanning { color: #ffcc00; animation: blink 1s infinite; }
+        .scanning { color: #ffcc00; animation: blink 1.5s infinite; }
 
         @keyframes blink { 50% { opacity: 0.5; } }
         
         #debug-log {
-            margin-top: 10px;
-            font-size: 10px;
+            margin-top: 15px;
+            font-size: 11px;
             color: #555;
-            font-family: monospace;
+            font-family: "Courier New", monospace;
+            line-height: 1.4;
         }
     </style>
 </head>
 <body>
 
-    <h1>Scholar Zolo</h1>
-    <p>GFAS (Geo Fenced Attendance System)</p>
+    <h1>GFAS (Geo Fenced Attendance System)</h1>
+    <p>Secure Late Night Attendance</p>
 
     <div id="camera-wrapper">
         <video id="video" autoplay playsinline muted></video>
         </div>
 
     <div id="controls">
-        <button id="start-btn" onclick="initApp()">📍 Verify Location & Scan</button>
+        <button id="start-btn" onclick="initApp()">📍 Start Attendance Check</button>
     </div>
 
-    <div id="status">Ready to scan...</div>
+    <div id="status">Ready to verify...</div>
     <div id="debug-log"></div>
 
     <script>
         // --- CONFIGURATION ---
-        const TEST_MODE = false; // Set to true to skip GPS for testing
-        
-        // HOSTEL GEOFENCE
+        const TEST_MODE = false; // Set to TRUE if you are testing away from hostel
+
+        // YOUR HOSTEL CORNERS (The 4 points you gave me)
         const HOSTEL_POLYGON = [
             { lat: 13.128425, lng: 77.589451 },
             { lat: 13.128249, lng: 77.589476 },
@@ -113,70 +121,89 @@
             { lat: 13.128426, lng: 77.588660 }
         ];
 
-        // --- VARIABLES ---
+        // --- STATE MANAGEMENT ---
+        let state = {
+            gpsReady: false,
+            faceReady: false,
+            attendanceMarked: false
+        };
+
         const statusEl = document.getElementById('status');
         const debugEl = document.getElementById('debug-log');
         const cameraWrapper = document.getElementById('camera-wrapper');
         const startBtn = document.getElementById('start-btn');
         let videoEl;
         let detectionInterval;
-        let faceConfirmedFrames = 0; // How long we've seen a face
+        let watchId; // To stop GPS later
 
         async function initApp() {
             startBtn.disabled = true;
-            statusEl.innerText = "Loading AI Models...";
+            statusEl.innerText = "Initializing AI Models...";
             
             try {
                 // 1. Load the AI Model (Tiny Face Detector)
                 // We assume the model files are in the same directory as index.html
                 await faceapi.nets.tinyFaceDetector.loadFromUri('./'); 
                 
-                statusEl.innerText = "Checking GPS...";
-                checkLocation();
+                // 2. PARALLEL START: Launch Camera AND GPS at the same time
+                startCamera(); 
+                startGPSStream();
+
             } catch (err) {
                 console.error(err);
-                showError("Error loading AI. Did you upload the model files?");
+                showError("Error: Could not load AI models. Ensure files are uploaded.");
             }
         }
 
-        function checkLocation() {
+        // --- 1. THE GPS STREAM (Running in Background) ---
+        function startGPSStream() {
             if (TEST_MODE) {
-                console.log("TEST MODE: Skipping GPS");
-                successLocation();
+                console.log("TEST MODE: GPS automatically valid.");
+                state.gpsReady = true;
+                updateStatusUI();
                 return;
             }
 
             if (!navigator.geolocation) {
-                showError("Geolocation not supported.");
+                showError("GPS is not supported by this browser.");
                 return;
             }
 
-            navigator.geolocation.getCurrentPosition(
+            // watchPosition updates us every time the phone gets a better fix
+            statusEl.innerText = "Requesting GPS Access...";
+            
+            watchId = navigator.geolocation.watchPosition(
                 (position) => {
                     const userPos = { lat: position.coords.latitude, lng: position.coords.longitude };
-                    debugEl.innerText = `Lat: ${userPos.lat.toFixed(5)} Lng: ${userPos.lng.toFixed(5)}`;
-                    
-                    if (isPointInPolygon(userPos, HOSTEL_POLYGON)) {
-                        successLocation();
+                    const accuracy = position.coords.accuracy;
+
+                    debugEl.innerText = `GPS Acc: ${accuracy.toFixed(1)}m | Lat: ${userPos.lat.toFixed(4)}`;
+
+                    // Check if inside Polygon
+                    const isInside = isPointInPolygon(userPos, HOSTEL_POLYGON);
+
+                    if (isInside) {
+                        state.gpsReady = true;
+                        // If we already had the face, this completes the check
+                        checkFinalCompletion();
                     } else {
-                        showError("❌ You are outside the designated area.");
-                        startBtn.disabled = false;
+                        state.gpsReady = false; // If they drift out, invalidate it
                     }
+                    updateStatusUI();
                 },
                 (error) => {
-                    showError("GPS Error. Allow permissions.");
-                    startBtn.disabled = false;
+                    console.warn("GPS Warning:", error.message);
+                    if(error.code === 1) showError("GPS Permission Denied.");
                 },
-                { enableHighAccuracy: true, timeout: 10000 }
+                {
+                    enableHighAccuracy: true, // Force GPS hardware
+                    timeout: 20000,
+                    maximumAge: 0
+                }
             );
         }
 
-        function successLocation() {
-            statusEl.innerText = "✅ Location Verified! Starting Camera...";
-            statusEl.className = "success";
-            setTimeout(startCamera, 1000);
-        }
-
+        // --- 2. THE CAMERA & AI (Foreground) ---
         async function startCamera() {
             cameraWrapper.style.display = 'block';
             startBtn.style.display = 'none';
@@ -186,20 +213,16 @@
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
                 videoEl.srcObject = stream;
                 
-                // Wait for video to actually play before attaching AI
                 videoEl.onloadedmetadata = () => {
                     videoEl.play();
                     startAIDetection();
                 };
             } catch (err) {
-                showError("Camera denied.");
+                showError("Camera access denied. Check permissions.");
             }
         }
 
         async function startAIDetection() {
-            statusEl.innerText = "Looking for a face...";
-            statusEl.className = "scanning";
-
             // Create a canvas to draw the detection box
             const canvas = faceapi.createCanvasFromMedia(videoEl);
             cameraWrapper.append(canvas);
@@ -208,51 +231,80 @@
             const displaySize = { width: videoEl.clientWidth, height: videoEl.clientHeight };
             faceapi.matchDimensions(canvas, displaySize);
 
-            // Loop every 100ms
+            let faceFrames = 0;
+
             detectionInterval = setInterval(async () => {
-                // DETECT FACES using TinyFaceDetector
+                if (state.attendanceMarked) return; // Stop logic if already done
+
+                // DETECT FACES
                 const detections = await faceapi.detectAllFaces(videoEl, new faceapi.TinyFaceDetectorOptions());
                 
-                // Resize results to match display
+                // Draw boxes
                 const resizedDetections = faceapi.resizeResults(detections, displaySize);
-                
-                // Clear previous drawings
                 canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
-                
-                // DRAW THE BOX
                 faceapi.draw.drawDetections(canvas, resizedDetections);
 
                 if (detections.length > 0) {
-                    faceConfirmedFrames++;
-                    statusEl.innerText = `Face Detected... Hold still (${faceConfirmedFrames}/20)`;
-                    
-                    // If we see a face for ~2 seconds (20 frames)
-                    if (faceConfirmedFrames > 20) {
-                        finishAttendance();
+                    faceFrames++;
+                    // Require 10 continuous frames (~1 second) of face visibility
+                    if (faceFrames > 10) {
+                        state.faceReady = true;
+                        checkFinalCompletion();
                     }
                 } else {
-                    faceConfirmedFrames = 0; // Reset if face is lost
-                    statusEl.innerText = "No face detected. Look at camera.";
+                    faceFrames = 0;
+                    state.faceReady = false;
                 }
-            }, 100);
+                updateStatusUI();
+            }, 100); // Check 10 times per second
         }
 
-        function finishAttendance() {
+        // --- 3. THE LOGIC BRAIN ---
+        function updateStatusUI() {
+            if (state.attendanceMarked) return;
+
+            if (!state.gpsReady && !state.faceReady) {
+                statusEl.innerText = "📍 Locating & 😐 Scanning...";
+                statusEl.className = "scanning";
+            } else if (!state.gpsReady && state.faceReady) {
+                statusEl.innerText = "Face Detected! Refining GPS Signal..."; // Waiting for GPS accuracy
+                statusEl.className = "info";
+            } else if (state.gpsReady && !state.faceReady) {
+                statusEl.innerText = "Location Verified! Look at Camera.";
+                statusEl.className = "info";
+            }
+        }
+
+        function checkFinalCompletion() {
+            // ONLY Finish if BOTH are true
+            if (state.gpsReady && state.faceReady && !state.attendanceMarked) {
+                state.attendanceMarked = true;
+                completeAttendance();
+            }
+        }
+
+        function completeAttendance() {
+            // Stop Loops
             clearInterval(detectionInterval);
-            statusEl.innerText = "✅ ATTENDANCE MARKED!";
+            navigator.geolocation.clearWatch(watchId); // Stop GPS to save battery
+
+            statusEl.innerText = "✅ ATTENDANCE MARKED SUCCESSFULLY!";
             statusEl.className = "success";
             
-            // Draw a final "Success" message on canvas
-            // Stop Video
-            videoEl.srcObject.getTracks().forEach(track => track.stop());
+            // Visual Success Cue
+            cameraWrapper.style.border = "4px solid #00ff88";
+            
+            // OPTIONAL: Send data to Firebase here
+            console.log("Attendance Data Ready to Send to Server");
         }
 
-        // Ray Casting Algorithm for Geofence
+        // --- UTILS (Ray Casting for Polygon) ---
         function isPointInPolygon(p, polygon) {
             let inside = false;
             for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
                 let xi = polygon[i].lat, yi = polygon[i].lng;
                 let xj = polygon[j].lat, yj = polygon[j].lng;
+                
                 let intersect = ((yi > p.lng) != (yj > p.lng)) &&
                     (p.lat < (xj - xi) * (p.lng - yi) / (yj - yi) + xi);
                 if (intersect) inside = !inside;
@@ -263,6 +315,8 @@
         function showError(msg) {
             statusEl.innerText = msg;
             statusEl.className = "error";
+            startBtn.disabled = false;
+            startBtn.style.display = 'block';
         }
     </script>
 </body>
