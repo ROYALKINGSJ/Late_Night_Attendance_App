@@ -1,142 +1,72 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Face ID Generator</title>
+    <title>Face ID Generator (CDN Version)</title>
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <style>
-        body { background: #1a1a1a; color: white; text-align: center; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; }
-        
-        /* Progress Bar Styles */
-        #progress-container {
-            width: 80%;
-            max-width: 400px;
-            background-color: #333;
-            border-radius: 10px;
-            margin: 20px auto;
-            height: 20px;
-            overflow: hidden;
-            border: 1px solid #555;
-        }
-        
-        #progress-bar {
-            width: 0%;
-            height: 100%;
-            background-color: #007aff;
-            transition: width 0.3s ease;
-        }
-
-        #status-text { font-size: 14px; color: #aaa; margin-bottom: 20px; }
-        
-        #video { 
-            width: 100%; max-width: 300px; 
-            border: 2px solid #555; border-radius: 10px; 
-            display:none; margin-top: 10px; 
-        }
-
-        button { 
-            font-size: 18px; padding: 12px 24px; 
-            background: #007aff; color: white; 
-            border: none; border-radius: 8px; 
-            cursor: pointer; margin-top: 15px;
-            display: none; 
-        }
-        
-        textarea { 
-            width: 90%; max-width: 500px; 
-            background: #222; color: #00ff88; 
-            border: 1px solid #444; padding: 10px; 
-            margin-top: 10px; font-family: monospace; 
-        }
+        body { background: #1a1a1a; color: white; text-align: center; font-family: sans-serif; padding: 20px; }
+        #status { color: #aaa; margin-bottom: 20px; }
+        textarea { width: 90%; height: 100px; background: #222; color: #00ff88; border: 1px solid #444; }
+        button { padding: 15px; font-size: 18px; cursor: pointer; background: #007aff; color: white; border: none; border-radius: 8px; margin-top: 10px; display:none;}
+        video { border: 2px solid #555; border-radius: 10px; display:none; max-width: 100%; }
     </style>
 </head>
 <body>
-
     <h2>Scholar Zolo Setup</h2>
-    <p>Loading AI Brains...</p>
-
-    <div id="progress-container">
-        <div id="progress-bar"></div>
-    </div>
-    <div id="status-text">Initializing...</div>
-
+    <div id="status">Connecting to AI Cloud...</div>
     <video id="video" autoplay muted playsinline></video>
     <br>
-    <button id="scanBtn" onclick="startScan()">📸 Scan My Face</button>
-
-    <div id="result-area" style="display:none; margin-top: 20px;">
-        <h3>✅ SUCCESS! Copy these numbers:</h3>
-        <textarea id="result" rows="6"></textarea>
-    </div>
+    <button id="scanBtn" onclick="scanFace()">📸 Scan Face</button>
+    <br><br>
+    <textarea id="result" placeholder="Your numbers will appear here..."></textarea>
 
     <script>
-        const progressBar = document.getElementById('progress-bar');
-        const statusText = document.getElementById('status-text');
-        const scanBtn = document.getElementById('scanBtn');
-        const videoEl = document.getElementById('video');
-
-        function updateProgress(percent, msg) {
-            progressBar.style.width = percent + "%";
-            statusText.innerText = msg;
-        }
-
-        async function init() {
+        const status = document.getElementById('status');
+        
+        async function loadModels() {
             try {
-                // Step 1: Tiny Face Detector
-                updateProgress(10, "Loading Detector (1/3)...");
-                await faceapi.nets.tinyFaceDetector.loadFromUri('./');
-                
-                // Step 2: Landmarks
-                updateProgress(40, "Loading Landmarks (2/3)...");
-                await faceapi.nets.faceLandmark68Net.loadFromUri('./');
-                
-                // Step 3: Recognition (The big file)
-                updateProgress(70, "Loading Recognizer (3/3)...");
-                await faceapi.nets.faceRecognitionNet.loadFromUri('./');
-                
-                // Done
-                updateProgress(100, "Starting Camera...");
-                startCamera();
+                // LOAD FROM INTERNET (Reliable)
+                const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
 
+                status.innerText = "Downloading Brains from Cloud...";
+                
+                await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+                await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+                await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+
+                status.innerText = "Ready! Starting Camera...";
+                startCamera();
             } catch (err) {
-                progressBar.style.backgroundColor = "#ff4444";
-                statusText.innerText = "Error: " + err.message;
-                statusText.style.color = "#ff4444";
-                alert("Missing files! Did you upload the model files to GitHub?");
+                status.innerText = "Error: " + err.message;
+                status.style.color = "red";
             }
         }
 
         async function startCamera() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: {} });
-                videoEl.srcObject = stream;
-                videoEl.style.display = "inline-block";
-                scanBtn.style.display = "inline-block";
-                statusText.innerText = "Ready to Scan. Look at camera.";
-            } catch (err) {
-                statusText.innerText = "Camera Access Denied";
-            }
+            const stream = await navigator.mediaDevices.getUserMedia({ video: {} });
+            document.getElementById('video').srcObject = stream;
+            document.getElementById('video').style.display = "inline-block";
+            document.getElementById('scanBtn').style.display = "inline-block";
+            status.innerText = "Look at camera & click Scan.";
         }
 
-        async function startScan() {
-            statusText.innerText = "Scanning... Hold still...";
-            
-            const detection = await faceapi.detectSingleFace(videoEl, new faceapi.TinyFaceDetectorOptions())
+        async function scanFace() {
+            status.innerText = "Scanning...";
+            const detection = await faceapi.detectSingleFace(document.getElementById('video'), new faceapi.TinyFaceDetectorOptions())
                 .withFaceLandmarks()
                 .withFaceDescriptor();
 
             if (detection) {
-                const numbers = Object.values(detection.descriptor);
-                document.getElementById('result').value = JSON.stringify(numbers);
-                document.getElementById('result-area').style.display = 'block';
-                statusText.innerText = "Scan Complete!";
-                progressBar.style.backgroundColor = "#00ff88"; // Green success
-                alert("Done! Copy the numbers below.");
+                document.getElementById('result').value = JSON.stringify(Object.values(detection.descriptor));
+                status.innerText = "✅ Success! Copy the numbers below.";
+                status.style.color = "#00ff88";
             } else {
-                alert("No face found! Make sure you are well lit and looking at the camera.");
+                status.innerText = "❌ No face found. Try again.";
+                status.style.color = "orange";
             }
         }
 
-        init();
+        loadModels();
     </script>
 </body>
 </html>
