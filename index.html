@@ -3,13 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scholar Zolo - Night Attendance</title>
-    
+    <title>Scholar Zolo - Secure Attendance</title>
     <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
-
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background-color: #121212;
             color: #ffffff;
             display: flex;
@@ -19,14 +17,9 @@
             height: 100vh;
             margin: 0;
             text-align: center;
-            padding: 20px;
-            box-sizing: border-box;
-            overflow: hidden; /* Prevent scrolling */
+            overflow: hidden;
         }
-        h1 { margin-bottom: 5px; font-weight: 700; color: #00aaff; }
-        p { color: #aaaaaa; margin-bottom: 30px; margin-top: 0; font-size: 14px;}
         
-        /* Container for Video + AI Canvas */
         #camera-wrapper {
             position: relative;
             width: 100%;
@@ -35,85 +28,57 @@
             background-color: #222;
             border-radius: 20px;
             overflow: hidden;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.6);
-            display: none; /* Hidden until started */
-            border: 2px solid #333;
+            border: 3px solid #333;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            display: none;
         }
         
-        video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            position: absolute;
-            top: 0;
-            left: 0;
-            transform: scaleX(-1); /* Mirror the webcam like a selfie */
-        }
-
-        /* The Canvas where AI draws the box */
-        canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            transform: scaleX(-1); /* Mirror the canvas too */
-        }
+        video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        canvas { position: absolute; top: 0; left: 0; transform: scaleX(-1); }
 
         button {
             background-color: #007aff;
             color: white;
             border: none;
-            padding: 18px 30px;
+            padding: 18px 40px;
             font-size: 18px;
             border-radius: 12px;
             cursor: pointer;
-            margin-top: 30px;
-            transition: background 0.2s, transform 0.1s;
-            width: 100%;
-            max-width: 320px;
             font-weight: 600;
-            box-shadow: 0 4px 12px rgba(0,122,255,0.3);
+            margin-top: 20px;
+            transition: transform 0.1s;
         }
-        button:disabled { background-color: #333; color: #666; cursor: not-allowed; box-shadow: none; }
         button:active { transform: scale(0.98); }
-        
-        #status { margin-top: 25px; font-size: 16px; min-height: 24px; font-weight: 600; letter-spacing: 0.5px;}
+        button:disabled { background-color: #444; color: #888; cursor: wait; }
+
+        #status { margin-top: 20px; font-size: 16px; font-weight: 500; min-height: 24px;}
         .success { color: #00ff88; text-shadow: 0 0 10px rgba(0,255,136,0.3); }
         .error { color: #ff4444; }
         .info { color: #00aaff; }
-        .scanning { color: #ffcc00; animation: blink 1.5s infinite; }
-
-        @keyframes blink { 50% { opacity: 0.5; } }
         
-        #debug-log {
-            margin-top: 15px;
-            font-size: 11px;
-            color: #555;
-            font-family: "Courier New", monospace;
-            line-height: 1.4;
-        }
+        #debug-log { margin-top: 10px; font-size: 10px; color: #555; font-family: monospace; }
     </style>
 </head>
 <body>
 
-    <h1>GFAS (Geo Fenced Attendance System)</h1>
-    <p>Secure Late Night Attendance</p>
+    <h2 style="margin-bottom: 5px;">Scholar Zolo</h2>
+    <p style="color:#777; margin-top:0;">Late Night Attendance</p>
 
     <div id="camera-wrapper">
         <video id="video" autoplay playsinline muted></video>
-        </div>
-
-    <div id="controls">
-        <button id="start-btn" onclick="initApp()">📍 Start Attendance Check</button>
     </div>
 
-    <div id="status">Ready to verify...</div>
+    <button id="start-btn" onclick="initApp()">📍 Verify & Scan</button>
+    <div id="status">Ready</div>
     <div id="debug-log"></div>
 
     <script>
-        // --- CONFIGURATION ---
-        const TEST_MODE = false; // Set to TRUE if you are testing away from hostel
+        // --- 1. PASTE YOUR NUMBERS HERE ---
+        // (I have pre-filled it with the numbers you sent, but double check!)
+        const ADMIN_DESCRIPTOR = [-0.10651249438524246,0.18682342767715454,0.030025772750377655,0.0597865954041481,-0.03422766551375389,0.008696001954376698,-0.018361791968345642,-0.05388065055012703,0.1480509638786316,-0.07772717624902725,0.20302365720272064,-0.0489942841231823,-0.16818548738956451,-0.17404504120349884,0.04553290456533432,0.15252362191677094,-0.14591968059539795,-0.15702958405017853,-0.07042010128498077,-0.1297890543937683,-0.03127942979335785,0.03627530485391617,0.021350037306547165,0.024174416437745094,-0.13216930627822876,-0.39184117317199707,-0.04722302779555321,-0.213333398103714,0.08022776991128922,-0.12750685214996338,-0.11120283603668213,0.010999293997883797,-0.1709655523300171,-0.0692744255065918,0.04785255715250969,0.09364595264196396,-0.07404015958309174,0.012504657730460167,0.1660287231206894,0.08096040785312653,-0.09956599771976471,-0.017374319955706596,0.00833385530859232,0.35778000950813293,0.16125503182411194,0.07337914407253265,-0.018541021272540092,-0.008995099924504757,0.057226113975048065,-0.1453532725572586,0.10733113437891006,0.13188990950584412,0.16438676416873932,0.1115197166800499,0.07700592279434204,-0.16532081365585327,-0.0028583710081875324,-0.029965374618768692,-0.18230286240577698,0.035991471260786057,0.02863195724785328,-0.0558345653116703,-0.07593853026628494,0.010942112654447556,0.348543256521225,0.09120941907167435,-0.09081186354160309,-0.0747431293129921,0.1811356097459793,-0.10597250610589981,0.032200541347265244,0.04753363877534866,-0.09860517829656601,-0.13396196067333221,-0.18846814334392548,0.1410064846277237,0.45358631014823914,0.12140689045190811,-0.18467175960540771,-0.03920607268810272,-0.10799363255500793,-0.08673296868801117,0.038858894258737564,0.09900973737239838,-0.13344353437423706,0.012968548573553562,-0.03955121710896492,0.045274753123521805,0.12248621135950089,-0.030933544039726257,-0.05085388198494911,0.14642451703548431,-0.040817372500896454,0.03071160614490509,0.03887467831373215,-0.10176144540309906,-0.09837093204259872,-0.005263424012809992,-0.07781867682933807,-0.10289531201124191,0.03172345459461212,-0.17280079424381256,-0.022891027852892876,0.09636249393224716,-0.1927006095647812,0.09081775695085526,0.07299776375293732,-0.05545508489012718,0.014620764181017876,0.11170022189617157,-0.14487811923027039,-0.11120466887950897,0.14856559038162231,-0.27151331305503845,0.23440691828727722,0.1879683881998062,0.06657587736845016,0.17299717664718628,0.0542137585580349,0.09039709717035294,0.018023202195763588,-0.024208230897784233,-0.11325273662805557,-0.04293964058160782,0.07106306403875351,-0.0031580927316099405,0.020327458158135414,0.019016319885849953]; 
 
-        // YOUR HOSTEL CORNERS (The 4 points you gave me)
+        // --- CONFIGURATION ---
+        const TEST_MODE = false; // Set TRUE if testing outside hostel
         const HOSTEL_POLYGON = [
             { lat: 13.128425, lng: 77.589451 },
             { lat: 13.128249, lng: 77.589476 },
@@ -121,190 +86,164 @@
             { lat: 13.128426, lng: 77.588660 }
         ];
 
-        // --- STATE MANAGEMENT ---
-        let state = {
-            gpsReady: false,
-            faceReady: false,
-            attendanceMarked: false
-        };
-
+        // --- STATE & VARS ---
         const statusEl = document.getElementById('status');
         const debugEl = document.getElementById('debug-log');
         const cameraWrapper = document.getElementById('camera-wrapper');
         const startBtn = document.getElementById('start-btn');
         let videoEl;
-        let detectionInterval;
-        let watchId; // To stop GPS later
+        let watchId;
+        let isGpsInside = false;
 
         async function initApp() {
             startBtn.disabled = true;
-            statusEl.innerText = "Initializing AI Models...";
+            statusEl.innerText = "Downloading AI Models (CDN)...";
             
             try {
-                // 1. Load the AI Model (Tiny Face Detector)
-                // We assume the model files are in the same directory as index.html
-                await faceapi.nets.tinyFaceDetector.loadFromUri('./'); 
+                const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
                 
-                // 2. PARALLEL START: Launch Camera AND GPS at the same time
-                startCamera(); 
-                startGPSStream();
+                // Load ALL Models from Internet
+                await Promise.all([
+                    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+                ]);
+                
+                statusEl.innerText = "Models Loaded. Starting Sensors...";
+                
+                // START PARALLEL TASKS
+                startCamera();
+                startGPS(); 
 
             } catch (err) {
+                statusEl.innerText = "Error: " + err.message;
+                statusEl.className = "error";
                 console.error(err);
-                showError("Error: Could not load AI models. Ensure files are uploaded.");
             }
         }
 
-        // --- 1. THE GPS STREAM (Running in Background) ---
-        function startGPSStream() {
-            if (TEST_MODE) {
-                console.log("TEST MODE: GPS automatically valid.");
-                state.gpsReady = true;
-                updateStatusUI();
-                return;
-            }
-
-            if (!navigator.geolocation) {
-                showError("GPS is not supported by this browser.");
-                return;
-            }
-
-            // watchPosition updates us every time the phone gets a better fix
-            statusEl.innerText = "Requesting GPS Access...";
-            
-            watchId = navigator.geolocation.watchPosition(
-                (position) => {
-                    const userPos = { lat: position.coords.latitude, lng: position.coords.longitude };
-                    const accuracy = position.coords.accuracy;
-
-                    debugEl.innerText = `GPS Acc: ${accuracy.toFixed(1)}m | Lat: ${userPos.lat.toFixed(4)}`;
-
-                    // Check if inside Polygon
-                    const isInside = isPointInPolygon(userPos, HOSTEL_POLYGON);
-
-                    if (isInside) {
-                        state.gpsReady = true;
-                        // If we already had the face, this completes the check
-                        checkFinalCompletion();
-                    } else {
-                        state.gpsReady = false; // If they drift out, invalidate it
-                    }
-                    updateStatusUI();
-                },
-                (error) => {
-                    console.warn("GPS Warning:", error.message);
-                    if(error.code === 1) showError("GPS Permission Denied.");
-                },
-                {
-                    enableHighAccuracy: true, // Force GPS hardware
-                    timeout: 20000,
-                    maximumAge: 0
-                }
-            );
-        }
-
-        // --- 2. THE CAMERA & AI (Foreground) ---
+        // --- 1. CAMERA & RECOGNITION ---
         async function startCamera() {
             cameraWrapper.style.display = 'block';
             startBtn.style.display = 'none';
             videoEl = document.getElementById('video');
-
+            
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
                 videoEl.srcObject = stream;
                 
                 videoEl.onloadedmetadata = () => {
                     videoEl.play();
-                    startAIDetection();
+                    startRecognitionLoop();
                 };
             } catch (err) {
-                showError("Camera access denied. Check permissions.");
+                statusEl.innerText = "Camera Denied";
+                statusEl.className = "error";
             }
         }
 
-        async function startAIDetection() {
-            // Create a canvas to draw the detection box
+        async function startRecognitionLoop() {
+            // Setup the Matcher with YOUR face
+            const labeledDescriptor = new faceapi.LabeledFaceDescriptors('Student', [new Float32Array(ADMIN_DESCRIPTOR)]);
+            const faceMatcher = new faceapi.FaceMatcher(labeledDescriptor, 0.55); // Strictness (Lower is stricter)
+
+            // Canvas for drawing boxes
             const canvas = faceapi.createCanvasFromMedia(videoEl);
             cameraWrapper.append(canvas);
-            
-            // Match canvas size to video size
             const displaySize = { width: videoEl.clientWidth, height: videoEl.clientHeight };
             faceapi.matchDimensions(canvas, displaySize);
 
-            let faceFrames = 0;
+            statusEl.innerText = "Scanning Face...";
 
-            detectionInterval = setInterval(async () => {
-                if (state.attendanceMarked) return; // Stop logic if already done
+            setInterval(async () => {
+                // 1. Detect Face + Landmarks + Descriptor
+                const detection = await faceapi.detectSingleFace(videoEl, new faceapi.TinyFaceDetectorOptions())
+                    .withFaceLandmarks()
+                    .withFaceDescriptor();
 
-                // DETECT FACES
-                const detections = await faceapi.detectAllFaces(videoEl, new faceapi.TinyFaceDetectorOptions());
-                
-                // Draw boxes
-                const resizedDetections = faceapi.resizeResults(detections, displaySize);
-                canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
-                faceapi.draw.drawDetections(canvas, resizedDetections);
+                // Clear previous drawings
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-                if (detections.length > 0) {
-                    faceFrames++;
-                    // Require 10 continuous frames (~1 second) of face visibility
-                    if (faceFrames > 10) {
-                        state.faceReady = true;
-                        checkFinalCompletion();
+                if (detection) {
+                    // Resize to fit screen
+                    const resizedDetections = faceapi.resizeResults(detection, displaySize);
+                    
+                    // 2. Compare with ADMIN_DESCRIPTOR
+                    const match = faceMatcher.findBestMatch(detection.descriptor);
+                    
+                    // Draw Box
+                    const box = resizedDetections.detection.box;
+                    const drawBox = new faceapi.draw.DrawBox(box, { label: match.toString() });
+                    drawBox.draw(canvas);
+
+                    if (match.label === 'Student') {
+                        checkAttendanceCondition(true);
+                    } else {
+                        statusEl.innerText = "❌ Unknown Face";
+                        statusEl.className = "error";
                     }
                 } else {
-                    faceFrames = 0;
-                    state.faceReady = false;
+                    statusEl.innerText = "Looking for face...";
+                    statusEl.className = "info";
                 }
-                updateStatusUI();
-            }, 100); // Check 10 times per second
+            }, 500); // Check twice a second
         }
 
-        // --- 3. THE LOGIC BRAIN ---
-        function updateStatusUI() {
-            if (state.attendanceMarked) return;
-
-            if (!state.gpsReady && !state.faceReady) {
-                statusEl.innerText = "📍 Locating & 😐 Scanning...";
-                statusEl.className = "scanning";
-            } else if (!state.gpsReady && state.faceReady) {
-                statusEl.innerText = "Face Detected! Refining GPS Signal..."; // Waiting for GPS accuracy
-                statusEl.className = "info";
-            } else if (state.gpsReady && !state.faceReady) {
-                statusEl.innerText = "Location Verified! Look at Camera.";
-                statusEl.className = "info";
+        // --- 2. GPS LOGIC ---
+        function startGPS() {
+            if (TEST_MODE) {
+                console.log("TEST MODE: GPS Valid");
+                isGpsInside = true;
+                return;
             }
+
+            if (!navigator.geolocation) return;
+
+            watchId = navigator.geolocation.watchPosition(
+                (position) => {
+                    const userPos = { lat: position.coords.latitude, lng: position.coords.longitude };
+                    debugEl.innerText = `GPS: ${userPos.lat.toFixed(5)}, ${userPos.lng.toFixed(5)} (Acc: ${position.coords.accuracy.toFixed(0)}m)`;
+                    
+                    if (isPointInPolygon(userPos, HOSTEL_POLYGON)) {
+                        isGpsInside = true;
+                    } else {
+                        isGpsInside = false;
+                        if(statusEl.className === "success") return; // Don't override success
+                    }
+                },
+                (err) => console.warn(err),
+                { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+            );
         }
 
-        function checkFinalCompletion() {
-            // ONLY Finish if BOTH are true
-            if (state.gpsReady && state.faceReady && !state.attendanceMarked) {
-                state.attendanceMarked = true;
-                completeAttendance();
+        // --- 3. FINAL CHECK ---
+        function checkAttendanceCondition(faceIsMatch) {
+            if (faceIsMatch) {
+                if (isGpsInside) {
+                    completeAttendance();
+                } else {
+                    statusEl.innerText = "✅ Face Matched... but ❌ Outside Hostel!";
+                    statusEl.className = "info";
+                }
             }
         }
 
         function completeAttendance() {
-            // Stop Loops
-            clearInterval(detectionInterval);
-            navigator.geolocation.clearWatch(watchId); // Stop GPS to save battery
-
-            statusEl.innerText = "✅ ATTENDANCE MARKED SUCCESSFULLY!";
+            statusEl.innerText = "✅ ATTENDANCE MARKED: Sanskar Jaiswal";
             statusEl.className = "success";
+            cameraWrapper.style.borderColor = "#00ff88";
             
-            // Visual Success Cue
-            cameraWrapper.style.border = "4px solid #00ff88";
-            
-            // OPTIONAL: Send data to Firebase here
-            console.log("Attendance Data Ready to Send to Server");
+            // Stop logic
+            navigator.geolocation.clearWatch(watchId);
         }
 
-        // --- UTILS (Ray Casting for Polygon) ---
+        // Ray Casting Algo
         function isPointInPolygon(p, polygon) {
             let inside = false;
             for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
                 let xi = polygon[i].lat, yi = polygon[i].lng;
                 let xj = polygon[j].lat, yj = polygon[j].lng;
-                
                 let intersect = ((yi > p.lng) != (yj > p.lng)) &&
                     (p.lat < (xj - xi) * (p.lng - yi) / (yj - yi) + xi);
                 if (intersect) inside = !inside;
@@ -312,11 +251,27 @@
             return inside;
         }
 
-        function showError(msg) {
-            statusEl.innerText = msg;
-            statusEl.className = "error";
-            startBtn.disabled = false;
-            startBtn.style.display = 'block';
+        function initApp() {
+            // Triggered by button
+            startBtn.innerText = "Loading...";
+            startBtn.disabled = true;
+            
+            // Load from CDN
+            const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
+            
+            statusEl.innerText = "Loading AI Models...";
+            
+            Promise.all([
+                faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+                faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+                faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+            ]).then(() => {
+                statusEl.innerText = "Starting Camera...";
+                startCamera();
+                startGPS();
+            }).catch(err => {
+                statusEl.innerText = "Error loading models.";
+            });
         }
     </script>
 </body>
