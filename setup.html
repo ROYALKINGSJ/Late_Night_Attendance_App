@@ -6,8 +6,13 @@
     <style>
         body { background: #1a1a1a; color: white; text-align: center; font-family: sans-serif; padding: 20px; }
         #status { color: #aaa; margin-bottom: 20px; }
-        textarea { width: 90%; height: 100px; background: #222; color: #00ff88; border: 1px solid #444; }
-        button { padding: 15px; font-size: 18px; cursor: pointer; background: #007aff; color: white; border: none; border-radius: 8px; margin-top: 10px; display:none;}
+        textarea { width: 90%; height: 100px; background: #222; color: #00ff88; border: 1px solid #444; margin-top: 10px; }
+        
+        /* Main Action Buttons */
+        .btn { padding: 15px 30px; font-size: 18px; cursor: pointer; border: none; border-radius: 8px; margin-top: 10px; color: white; font-weight: bold; }
+        #scanBtn { background: #007aff; display:none; }
+        #copyBtn { background: #28a745; display:none; } /* Green Copy Button */
+        
         video { border: 2px solid #555; border-radius: 10px; display:none; max-width: 100%; }
     </style>
 </head>
@@ -16,18 +21,22 @@
     <div id="status">Connecting to AI Cloud...</div>
     <video id="video" autoplay muted playsinline></video>
     <br>
-    <button id="scanBtn" onclick="scanFace()">📸 Scan Face</button>
+    
+    <button id="scanBtn" class="btn" onclick="scanFace()">📸 Scan Face</button>
+    
     <br><br>
-    <textarea id="result" placeholder="Your numbers will appear here..."></textarea>
+    <textarea id="result" placeholder="Your numbers will appear here..." readonly></textarea>
+    <br>
+
+    <button id="copyBtn" class="btn" onclick="copyText()">📋 Copy to Clipboard</button>
 
     <script>
         const status = document.getElementById('status');
+        const copyBtn = document.getElementById('copyBtn');
         
         async function loadModels() {
             try {
-                // LOAD FROM INTERNET (Reliable)
                 const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
-
                 status.innerText = "Downloading Brains from Cloud...";
                 
                 await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
@@ -57,13 +66,38 @@
                 .withFaceDescriptor();
 
             if (detection) {
+                // Fill the text box
                 document.getElementById('result').value = JSON.stringify(Object.values(detection.descriptor));
-                status.innerText = "✅ Success! Copy the numbers below.";
+                
+                // Show Success & The Copy Button
+                status.innerText = "✅ Success! Click Copy below.";
                 status.style.color = "#00ff88";
+                copyBtn.style.display = "inline-block"; 
             } else {
                 status.innerText = "❌ No face found. Try again.";
                 status.style.color = "orange";
             }
+        }
+
+        function copyText() {
+            const resultBox = document.getElementById('result');
+            
+            // Select text (Mobile friendly)
+            resultBox.select();
+            resultBox.setSelectionRange(0, 99999); 
+
+            // Copy command
+            navigator.clipboard.writeText(resultBox.value).then(() => {
+                const originalText = copyBtn.innerText;
+                copyBtn.innerText = "✅ COPIED!";
+                copyBtn.style.background = "#005500"; // Darker green
+                
+                // Reset button text after 2 seconds
+                setTimeout(() => {
+                    copyBtn.innerText = originalText;
+                    copyBtn.style.background = "#28a745";
+                }, 2000);
+            });
         }
 
         loadModels();
